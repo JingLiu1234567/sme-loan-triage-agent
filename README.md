@@ -59,7 +59,7 @@ flowchart LR
 
 | Layer | Choice | Why |
 |---|---|---|
-| LLM | DeepSeek (`deepseek-chat`) via OpenAI SDK | OpenAI-compatible — see *Migrating to Azure OpenAI* below |
+| LLM | DeepSeek (`deepseek-chat`) via OpenAI SDK | OpenAI-compatible API — client and endpoint are swappable |
 | Agent loop | Plain Python, function-calling format | No framework — easier to reason about and audit |
 | UI | Streamlit | Fast iteration; live event streaming for transparency |
 | Internal DB | SQLite | Self-contained for a demo; replace with Postgres in production |
