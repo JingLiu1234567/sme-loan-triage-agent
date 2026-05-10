@@ -39,7 +39,7 @@ final decisions and edge cases — clean division of labor, with audit trail.
 flowchart LR
     UI[Streamlit UI<br/>app.py]
     Agent[Triage Agent<br/>agent.py]
-    LLM[LLM<br/>DeepSeek / Azure OpenAI<br/>OpenAI-compatible API]
+    LLM[LLM<br/>DeepSeek<br/>OpenAI-compatible API]
     SQL[(SQLite<br/>customers + history +<br/>applications)]
     Bureau[Mock Credit Bureau<br/>FastAPI on :8000]
     DecisionLog[(triage_decisions<br/>append-only)]
