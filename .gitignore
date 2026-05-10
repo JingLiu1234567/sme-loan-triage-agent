@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local DB (regenerate with seed.py)
+bank.db
+
+# Editor
+.vscode/
+.idea/
