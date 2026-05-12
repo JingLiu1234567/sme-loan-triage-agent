@@ -4,3 +4,14 @@ gatherUsageStats = false
 [server]
 headless = true
 port = 8501
+
+# Blue Professional theme — palette mirrors the audit report
+# (templates/blue-professional.html) so the UI and the generated
+# report share one visual identity.
+[theme]
+base = "light"
+primaryColor = "#1E2BFA"
+backgroundColor = "#FDFAE7"
+secondaryBackgroundColor = "#F4EFCF"
+textColor = "#111111"
+font = "sans serif"

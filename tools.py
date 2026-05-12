@@ -5,9 +5,11 @@ Three callable tools that the AI agent uses to gather evidence and
 record decisions. Each function returns a plain dict so it can be
 JSON-serialised back into the LLM tool-use loop.
 
-    1. query_customer_history  - SQL query against bank.db
-    2. check_credit_score      - HTTP call to the mock credit bureau
-    3. submit_triage_decision  - persist a final decision to the audit log
+    1. get_prior_reviews       - past triage decisions + reviewer actions
+                                 for the same customer
+    2. query_customer_history  - SQL query against bank.db
+    3. check_credit_score      - HTTP call to the mock credit bureau
+    4. submit_triage_decision  - persist a final decision to the audit log
 """
 
 import json
@@ -123,6 +125,81 @@ def query_customer_history(customer_id: str) -> dict[str, Any]:
         "customer": dict(customer),
         "summary": dict(summary),
         "history": [dict(r) for r in history],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_prior_reviews
+# ---------------------------------------------------------------------------
+def get_prior_reviews(customer_id: str) -> dict[str, Any]:
+    """Return prior agent triage decisions + Sarah's review actions
+    for the same customer, across all of their past applications.
+
+    Empty `history` means a new customer with no prior triage record.
+    For each prior decision we attach the latest reviewer action (if any)
+    and compute `final_decision`:
+        - reviewer accepted   -> agent's original decision
+        - reviewer overrode   -> the override_decision
+        - not yet reviewed    -> None (status = 'pending_review')
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                d.decision_id,
+                d.application_id,
+                a.requested_amount_gbp,
+                a.purpose,
+                d.decision        AS agent_decision,
+                d.reasoning       AS agent_reasoning,
+                d.risk_flags,
+                d.decided_at,
+                r.action          AS reviewer_action,
+                r.override_decision,
+                r.notes           AS reviewer_notes,
+                r.reviewed_at
+            FROM triage_decisions d
+            JOIN loan_applications a
+              ON a.application_id = d.application_id
+            LEFT JOIN reviewer_actions r
+              ON r.action_id = (
+                  SELECT MAX(action_id)
+                  FROM reviewer_actions
+                  WHERE decision_id = d.decision_id
+              )
+            WHERE a.customer_id = ?
+            ORDER BY d.decided_at DESC
+            """,
+            (customer_id,),
+        ).fetchall()
+
+    history: list[dict[str, Any]] = []
+    override_count = 0
+    for r in rows:
+        row = dict(r)
+        try:
+            row["risk_flags"] = json.loads(row.get("risk_flags") or "[]")
+        except json.JSONDecodeError:
+            row["risk_flags"] = []
+
+        action = row.get("reviewer_action")
+        if action == "accept":
+            row["final_decision"] = row["agent_decision"]
+            row["review_status"] = "accepted"
+        elif action == "override":
+            row["final_decision"] = row.get("override_decision")
+            row["review_status"] = "overridden"
+            override_count += 1
+        else:
+            row["final_decision"] = None
+            row["review_status"] = "pending_review"
+        history.append(row)
+
+    return {
+        "customer_id": customer_id,
+        "prior_count": len(history),
+        "override_count": override_count,
+        "history": history,
     }
 
 

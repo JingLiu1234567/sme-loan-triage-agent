@@ -20,18 +20,24 @@ Easy to miss things; hard to audit *why* a decision was made later.
 The reviewer picks an application from the queue and clicks **Run triage**. An
 LLM agent then:
 
-1. Queries the bank's repayment history (SQL).
-2. Calls the credit bureau (REST).
-3. Returns a structured recommendation — verdict, reasoning, scannable risk
+1. Looks up the customer's **prior triage history at this bank** — past agent
+   recommendations and the senior reviewer's response to each (long-term
+   memory). If a reviewer has overridden the agent on this customer before,
+   that's a strong calibration signal the agent factors into the new decision.
+2. Queries the bank's repayment history (SQL).
+3. Calls the credit bureau (REST).
+4. Returns a structured recommendation — verdict, reasoning, scannable risk
    flags, and key evidence with concrete record IDs the reviewer can re-check.
 
 The reviewer reads it and either **accepts** the agent's recommendation or
 **overrides** it with a new decision plus required notes. Both the agent's
 decision and the reviewer's response are written to **separate append-only
-audit tables**, so the full chain of custody is preserved.
+audit tables**, so the full chain of custody is preserved — and the next time
+the same customer applies, the agent sees what happened.
 
 The agent handles evidence-gathering and initial judgment; the human handles
-final decisions and edge cases — clean division of labor, with audit trail.
+final decisions and edge cases — clean division of labor, with audit trail
+and a feedback loop.
 
 ## Architecture
 
@@ -44,15 +50,21 @@ flowchart LR
     Bureau[Mock Credit Bureau<br/>FastAPI on :8000]
     DecisionLog[(triage_decisions<br/>append-only)]
     ReviewLog[(reviewer_actions<br/>append-only)]
+    Report[Audit Report<br/>report.py]
 
     UI -->|Run triage| Agent
     Agent <-->|chat + tool use| LLM
-    Agent <-->|tool 1: query_customer_history| SQL
-    Agent <-->|tool 2: check_credit_score| Bureau
-    Agent -->|tool 3: submit_triage_decision| DecisionLog
+    Agent <-->|tool 1: get_prior_reviews| DecisionLog
+    Agent <-->|tool 1: get_prior_reviews| ReviewLog
+    Agent <-->|tool 2: query_customer_history| SQL
+    Agent <-->|tool 3: check_credit_score| Bureau
+    Agent -->|tool 4: submit_triage_decision| DecisionLog
     UI -->|Accept / Override + notes| ReviewLog
     UI -->|Audit log| DecisionLog
     UI -->|Audit log| ReviewLog
+    UI -->|Generate report| Report
+    Report -->|reads| DecisionLog
+    Report -->|reads| ReviewLog
 ```
 
 ## Tech stack
@@ -96,27 +108,44 @@ The browser opens at `http://localhost:8501`.
 
 ### What you'll see
 
-1. Pick an application from the sidebar and click **Run triage**.
-2. The agent's tool calls and results stream into the page in real time as it
-   gathers evidence (typically 1–2 turns).
-3. The final recommendation appears with reasoning, key evidence, and risk flags.
+1. Pick an application from the sidebar. **Prior history at this bank** shows
+   immediately — past triage outcomes for this customer plus how the senior
+   reviewer responded.
+2. Click **Run triage**. The agent's tool calls + results stream into a
+   collapsible trace panel; the agent first consults prior history, then pulls
+   internal repayment data and the external credit score.
+3. The recommendation appears side-by-side with the reviewer panel: cobalt-
+   accented **AI Analyst** on the left (verdict card, risk flags, reasoning,
+   key evidence) and amber-accented **Senior Reviewer** on the right (accept
+   / override form, or the recorded outcome).
 4. Accept the recommendation, or override it with notes for the audit trail.
-5. The audit log at the bottom shows every decision — agent's and reviewer's.
+5. **Generate audit report** — a polished, presentation-quality HTML deck
+   styled like a Blue Professional consulting report, suitable for sharing
+   with the credit committee. Preview inline or download standalone.
+6. The audit log at the bottom shows every decision — agent's and reviewer's.
 
-Try **APP001** (strong borrower) for a clean approve, then **APP003** (prior
-default, low score) for a clear decline — comparing the two is the quickest way
-to see the agent's judgment.
+Try **APP001** (strong borrower) for a clean approve. Then run **APP003**
+(prior default, low score), override the agent's recommendation with a
+plausible reason, and run APP003 *again* — the agent will see your prior
+override in `get_prior_reviews` and recalibrate. This is the long-term-memory
+feedback loop in action.
 
 ## Project structure
 
 ```
 sme-loan-triage-agent/
-├── app.py            Streamlit UI (reviewer's screen)
-├── agent.py          Agent loop + system prompt + tool schemas
-├── tools.py          The three agent tools + reviewer audit functions
-├── credit_api.py     Mock credit bureau (FastAPI)
-├── seed.py           Build bank.db with synthetic data
-├── start.bat         One-click launcher (Windows)
+├── app.py                Streamlit UI (reviewer's screen, themed)
+├── agent.py              Agent loop + system prompt + tool schemas
+├── tools.py              The four agent tools + reviewer audit functions
+├── report.py             Audit-report renderer (Blue Professional template)
+├── credit_api.py         Mock credit bureau (FastAPI)
+├── seed.py               Build bank.db with synthetic data
+├── start.bat             One-click launcher (Windows)
+├── .streamlit/
+│   └── config.toml       Theme palette (mirrors the audit report)
+├── templates/
+│   ├── blue-professional.html    Source slide template
+│   └── blue-professional.json    Template metadata (palette, typography)
 ├── requirements.txt
 └── .env.example
 ```
@@ -148,5 +177,30 @@ re-pull the source row.
 **Why streaming events out of the agent.** `triage_stream()` is a generator
 that yields `turn_start` / `tool_call` / `tool_result` / `final` events. The
 UI renders each event as it arrives, so the reviewer sees the agent's
-reasoning unfolding in real time — important for trust and debugging.
+reasoning unfolding in real time — important for trust and debugging. The
+trace is also persisted in `session_state` and replayed across reruns, so it
+doesn't vanish when the reviewer accepts or overrides.
+
+**Why a long-term memory tool.** `get_prior_reviews` queries the audit tables
+for the same customer across all of their past applications, then returns
+agent recommendations alongside reviewer accept/override outcomes. The system
+prompt makes calling it mandatory step 1 — *before* the agent looks at fresh
+data — so the agent's read is conditioned on what the bank actually did last
+time. If a senior reviewer previously overrode the agent on this customer,
+that's treated as a strong calibration signal, not noise. The result is a
+clean human → agent feedback loop without any model fine-tuning.
+
+**Why a separate audit-report module.** `report.py` renders the same triage
+data into a presentation-quality HTML deck (Blue Professional template) that
+the reviewer can preview inline or download. The interactive Streamlit UI is
+for the in-flight decision; the report is the artefact downstream consumers
+(credit committee, compliance, regulators) actually look at. Same data, two
+different surfaces, each fit for purpose.
+
+**Why the UI uses the same visual language as the report.** `.streamlit/
+config.toml` and the CSS injected at the top of `app.py` mirror the report
+template's palette and typography (Inter + Space Grotesk, cream + cobalt).
+The reviewer's working surface and the deliverable they hand off share one
+visual identity — small detail, but it signals product polish rather than
+internal-tool aesthetics.
 

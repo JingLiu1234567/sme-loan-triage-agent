@@ -1,9 +1,10 @@
 """
 SME Loan Triage Agent.
 
-Given an application_id, the agent uses three tools to gather evidence
+Given an application_id, the agent uses four tools to gather evidence
 and produce a final triage decision:
 
+    - get_prior_reviews       (past agent + human reviews for this customer)
     - query_customer_history  (SQL against bank.db)
     - check_credit_score      (HTTP to mock credit bureau)
     - submit_triage_decision  (writes to the audit log; final step)
@@ -32,6 +33,7 @@ if sys.platform == "win32":
 from tools import (
     check_credit_score,
     get_application,
+    get_prior_reviews,
     query_customer_history,
     submit_triage_decision,
 )
@@ -56,6 +58,31 @@ MODEL = "deepseek-chat"
 # Tool schemas (OpenAI function-calling format)
 # --------------------------------------------------------------------------
 TOOL_SCHEMAS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_prior_reviews",
+            "description": (
+                "Look up the customer's prior triage history at this bank: "
+                "past agent recommendations AND the human reviewer's response "
+                "to each (accepted / overridden, with notes). Returns an empty "
+                "history for a brand-new customer. Use this BEFORE the other "
+                "tools — if a senior reviewer has previously overridden the "
+                "agent on this customer, that is a strong calibration signal "
+                "about how the bank actually decides for this profile."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Internal customer id, e.g. CUS001",
+                    }
+                },
+                "required": ["customer_id"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -162,6 +189,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 TOOL_FUNCTIONS = {
+    "get_prior_reviews": get_prior_reviews,
     "query_customer_history": query_customer_history,
     "check_credit_score": check_credit_score,
     "submit_triage_decision": submit_triage_decision,
@@ -175,10 +203,25 @@ Your job is to pre-screen a loan application and recommend ONE outcome:
   - decline  : clearly high risk, recommend rejection
 
 For every application you MUST:
-  1. Call query_customer_history to inspect the SME's profile and repayment record.
-  2. Call check_credit_score to retrieve the external credit-bureau score.
-  3. Reason carefully about both data sources together.
-  4. Call submit_triage_decision exactly once with your final answer.
+  1. Call get_prior_reviews FIRST to see whether this customer has past
+     triage outcomes at this bank, and how the senior human reviewer
+     (Sarah) responded — accepted or overridden, with notes.
+  2. Call query_customer_history to inspect the SME's profile and repayment record.
+  3. Call check_credit_score to retrieve the external credit-bureau score.
+  4. Reason carefully about all three data sources together.
+  5. Call submit_triage_decision exactly once with your final answer.
+
+Using prior reviews (step 1 output):
+  - If get_prior_reviews returns an empty history, this is a new customer;
+    proceed normally with steps 2-5.
+  - If a senior reviewer has previously OVERRIDDEN the agent on this
+    customer, treat that as a strong calibration signal — the bank's
+    actual risk appetite for this customer differs from what the agent
+    inferred last time. Lean toward the reviewer's prior final decision
+    unless new evidence clearly justifies a different call, and cite the
+    prior override in `key_evidence`.
+  - If the reviewer ACCEPTED past agent decisions, that is supportive but
+    weaker — still re-evaluate against current evidence.
 
 Decision guidance (heuristics, not rigid rules):
   - Any defaulted loan in history is a strong negative signal; lean 'decline'.
@@ -198,6 +241,9 @@ results so a human auditor can retrace it:
   - For credit data: cite the bureau payload values (score, band).
     Example: "credit bureau: score 540, band HIGH".
   - For the application itself: cite the `application_id`.
+  - For prior reviews: cite the prior `decision_id` plus what happened.
+    Example: "decision_id=4: agent recommended 'refer', Sarah overrode to
+    'decline' citing weak cashflow".
 Aggregate stats like "3 of 4 loans were late" are fine ONLY if you also point
 to at least one specific record_id as a concrete example.
 
