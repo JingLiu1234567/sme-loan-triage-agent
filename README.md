@@ -4,7 +4,9 @@ A working demo of an LLM agent that pre-screens UK SME loan applications, with a
 human reviewer staying in the loop. Built as a portfolio piece — opinionated about
 governance, audit, and the seam between agent and human.
 
-<img width="3456" height="1780" alt="1" src="https://github.com/user-attachments/assets/bccb9173-c207-4efa-97b5-aa51fb9dfbf8" />
+<img width="3456" height="1780" alt="Streamlit dashboard for the SME loan triage agent. The Application details panel sits above a collapsed Prior history at this bank panel, then two side-by-side sections: a cobalt-accented AI Analyst column showing an APPROVE verdict and supporting evidence on the left, and an amber-accented Senior Reviewer (Sarah) column with Accept and Override controls on the right." src="https://github.com/user-attachments/assets/bccb9173-c207-4efa-97b5-aa51fb9dfbf8" />
+
+*The reviewer's working surface: long-term memory (Prior history), agent recommendation (left, cobalt), and human accept / override (right, amber) — one application, one screen.*
 
 
 ## The problem
@@ -72,7 +74,9 @@ flowchart LR
 
 ## Audit report
 
-<img width="3456" height="1780" alt="2" src="https://github.com/user-attachments/assets/7ff201ec-4356-43ae-b7c5-fc305cdf8064" />
+<img width="3456" height="1780" alt="A slide from the generated audit report deck, styled like a Blue Professional consulting document. Cream background, cobalt blue accents, Space Grotesk typography. The slide is titled 'Why the agent reached this recommendation' with the agent's reasoning prose on the left and a numbered list of key evidence citations on the right. Risk flag pills appear below the reasoning, and slide controls (4 of 7, prev / next arrows) sit at the bottom." src="https://github.com/user-attachments/assets/7ff201ec-4356-43ae-b7c5-fc305cdf8064" />
+
+*One slide of the generated audit report — a presentation-quality HTML deck (Blue Professional template) the reviewer can preview inline or hand off to the credit committee.*
 
 
 ## Tech stack
