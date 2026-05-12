@@ -72,6 +72,7 @@ flowchart LR
 
 ## Audit report
 
+<img width="3456" height="1780" alt="2" src="https://github.com/user-attachments/assets/7ff201ec-4356-43ae-b7c5-fc305cdf8064" />
 
 
 ## Tech stack
