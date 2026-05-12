@@ -4,6 +4,9 @@ A working demo of an LLM agent that pre-screens UK SME loan applications, with a
 human reviewer staying in the loop. Built as a portfolio piece — opinionated about
 governance, audit, and the seam between agent and human.
 
+<img width="3456" height="1780" alt="1" src="https://github.com/user-attachments/assets/bccb9173-c207-4efa-97b5-aa51fb9dfbf8" />
+
+
 ## The problem
 
 SME loan pre-screening is, at many lenders, still a manual process:
@@ -66,6 +69,10 @@ flowchart LR
     Report -->|reads| DecisionLog
     Report -->|reads| ReviewLog
 ```
+
+## Audit report
+
+
 
 ## Tech stack
 
