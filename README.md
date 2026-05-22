@@ -60,7 +60,7 @@ flowchart LR
     UI -->|Run triage| Agent
     Agent <-->|chat + tool use| LLM
     Agent <-->|tool 1: get_prior_reviews| DecisionLog
-    Agent <-->|tool 1: get_prior_reviews| ReviewLog
+    Agent <-->|tool 1 cont.| ReviewLog
     Agent <-->|tool 2: query_customer_history| SQL
     Agent <-->|tool 3: check_credit_score| Bureau
     Agent -->|tool 4: submit_triage_decision| DecisionLog
@@ -164,7 +164,7 @@ sme-loan-triage-agent/
 
 ## Design decisions worth calling out
 
-**Why three tools, not one.** Each tool has a single, narrow purpose.
+**Why four tools, not one.** Each tool has a single, narrow purpose.
 `submit_triage_decision` is itself a tool, called exactly once at the end —
 this forces the agent to commit to a structured answer rather than free-text
 prose, and gives a natural hook for persistence and validation.

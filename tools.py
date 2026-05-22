@@ -1,7 +1,7 @@
 """
 Agent tools for the SME Loan Triage demo.
 
-Three callable tools that the AI agent uses to gather evidence and
+Four callable tools that the AI agent uses to gather evidence and
 record decisions. Each function returns a plain dict so it can be
 JSON-serialised back into the LLM tool-use loop.
 
@@ -79,57 +79,7 @@ _ensure_decisions_table()
 
 
 # ---------------------------------------------------------------------------
-# Tool 1: query_customer_history
-# ---------------------------------------------------------------------------
-def query_customer_history(customer_id: str) -> dict[str, Any]:
-    """Return the customer profile plus aggregated repayment history.
-
-    JOIN-style data assembly happens here so the agent reasons over a
-    single dict instead of paging raw rows. Returns an `error` key if
-    the customer is unknown.
-    """
-    with _connect() as conn:
-        customer = conn.execute(
-            "SELECT * FROM customers WHERE customer_id = ?",
-            (customer_id,),
-        ).fetchone()
-
-        if customer is None:
-            return {"error": f"customer_id {customer_id} not found"}
-
-        history = conn.execute(
-            """
-            SELECT record_id, loan_amount_gbp, due_date, paid_date, status
-            FROM repayment_history
-            WHERE customer_id = ?
-            ORDER BY due_date
-            """,
-            (customer_id,),
-        ).fetchall()
-
-        summary = conn.execute(
-            """
-            SELECT
-                COUNT(*)                                              AS total_loans,
-                SUM(CASE WHEN status = 'on_time'   THEN 1 ELSE 0 END) AS on_time,
-                SUM(CASE WHEN status = 'late'      THEN 1 ELSE 0 END) AS late,
-                SUM(CASE WHEN status = 'defaulted' THEN 1 ELSE 0 END) AS defaulted,
-                COALESCE(SUM(loan_amount_gbp), 0)                     AS total_borrowed_gbp
-            FROM repayment_history
-            WHERE customer_id = ?
-            """,
-            (customer_id,),
-        ).fetchone()
-
-    return {
-        "customer": dict(customer),
-        "summary": dict(summary),
-        "history": [dict(r) for r in history],
-    }
-
-
-# ---------------------------------------------------------------------------
-# Tool: get_prior_reviews
+# Tool 1: get_prior_reviews
 # ---------------------------------------------------------------------------
 def get_prior_reviews(customer_id: str) -> dict[str, Any]:
     """Return prior agent triage decisions + Sarah's review actions
@@ -204,7 +154,57 @@ def get_prior_reviews(customer_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Tool 2: check_credit_score
+# Tool 2: query_customer_history
+# ---------------------------------------------------------------------------
+def query_customer_history(customer_id: str) -> dict[str, Any]:
+    """Return the customer profile plus aggregated repayment history.
+
+    JOIN-style data assembly happens here so the agent reasons over a
+    single dict instead of paging raw rows. Returns an `error` key if
+    the customer is unknown.
+    """
+    with _connect() as conn:
+        customer = conn.execute(
+            "SELECT * FROM customers WHERE customer_id = ?",
+            (customer_id,),
+        ).fetchone()
+
+        if customer is None:
+            return {"error": f"customer_id {customer_id} not found"}
+
+        history = conn.execute(
+            """
+            SELECT record_id, loan_amount_gbp, due_date, paid_date, status
+            FROM repayment_history
+            WHERE customer_id = ?
+            ORDER BY due_date
+            """,
+            (customer_id,),
+        ).fetchall()
+
+        summary = conn.execute(
+            """
+            SELECT
+                COUNT(*)                                              AS total_loans,
+                SUM(CASE WHEN status = 'on_time'   THEN 1 ELSE 0 END) AS on_time,
+                SUM(CASE WHEN status = 'late'      THEN 1 ELSE 0 END) AS late,
+                SUM(CASE WHEN status = 'defaulted' THEN 1 ELSE 0 END) AS defaulted,
+                COALESCE(SUM(loan_amount_gbp), 0)                     AS total_borrowed_gbp
+            FROM repayment_history
+            WHERE customer_id = ?
+            """,
+            (customer_id,),
+        ).fetchone()
+
+    return {
+        "customer": dict(customer),
+        "summary": dict(summary),
+        "history": [dict(r) for r in history],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 3: check_credit_score
 # ---------------------------------------------------------------------------
 def check_credit_score(customer_id: str) -> dict[str, Any]:
     """Call the mock credit-bureau REST API and return the JSON payload.
@@ -226,7 +226,7 @@ def check_credit_score(customer_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Tool 3: submit_triage_decision
+# Tool 4: submit_triage_decision
 # ---------------------------------------------------------------------------
 def submit_triage_decision(
     application_id: str,
